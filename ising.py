@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.animation as animation
+import argparse
 
 DIRECTIONS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
@@ -46,7 +47,7 @@ class Ising:
             total_energy -= energy / 2
         return changed, total_energy
 
-    def simulate(self, n_steps, render=False):
+    def simulate(self, n_steps):
         avg_energy = 0
         avg_squared_energy = 0
         unchanged = 0
@@ -84,17 +85,31 @@ class Ising:
         return self.im,
 
 
-#
-#
-#
-# for _ in range(pre_steps):
-#     step()
-
 if __name__ == "__main__":
-    ising = Ising(8, 0.4)
-    ising.init_board("random")
-    # ising.stabilize(1000)
-    # ising.simulate(10000)
-    # fig = plt.figure()
-    ising.animate()
-    plt.show()
+    parser = argparse.ArgumentParser("Ising Simulation")
+    parser.add_argument("--beta", type=float, default=0.4)
+    parser.add_argument("--initialisation_mode", type=str, default="random")
+    parser.add_argument("--size", type=int, default=8)
+    subparsers = parser.add_subparsers(dest="command")
+    animate_parser = subparsers.add_parser("animate")
+    simulate_parser = subparsers.add_parser("simulate")
+    simulate_parser.add_argument("--stabilisation_steps", type=int, default=1000, required=False)
+    simulate_parser.add_argument("--simulation_steps", type=int, default=10000, required=False)
+    simulate_parser.add_argument("--max_unchanging", type=int, default=100, required=False)
+
+    args = parser.parse_args()
+    if not args.command:
+        raise ValueError("A command should be specified")
+
+    beta = args.beta
+    size = args.size
+    initialisation_mode = args.initialisation_mode
+    max_unchanging = args.max_unchanging if "max_unchanging" in args else None
+    ising = Ising(size, beta, max_unchanging)
+    ising.init_board(initialisation_mode)
+
+    if args.command == "simulate":
+        ising.stabilize(args.stabilisation_steps)
+        ising.simulate(args.simulation_steps)
+    else:
+        ising.animate()
