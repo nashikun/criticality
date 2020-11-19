@@ -2,27 +2,35 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.animation as animation
 import argparse
+from scipy.signal import convolve2d
 
 DIRECTIONS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
 
 class Ising:
-    def __init__(self, size, beta, max_unchanging=10):
+    def __init__(self, size, beta, initialisation_mode="random"):
         self.size = size
+        self.mask = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
         self.beta = beta
         self.board = None
         self.cells = [(i, j) for j in range(size) for i in range(size)]
-        self.max_unchanging = max_unchanging
+        self.initialisation_mode = initialisation_mode
         self.fig = plt.figure()
         self.im = None
+        self.init_board()
 
-    def init_board(self, mode):
-        if mode == "random":
-            self.board = 2 * np.random.randint(2, size=(self.size, self.size)) - 1
-        elif mode == "ones":
+    def init_board(self):
+        if self.initialisation_mode == "random":
+            self.board = 2 * np.random.randint(2,
+                                               size=(self.size, self.size)) - 1
+        elif self.initialisation_mode == "ones":
             self.board = np.ones((self.size, self.size))
-        elif mode == "zeros":
+        elif self.initialisation_mode == "zeros":
             self.board = np.zeros((self.size, self.size))
+        elif self.initialisation_mode == "half":
+            self.board = np.array(
+                [[i > self.size / 2 for i in range(self.size)]
+                 for j in range(self.size)])
 
     def probability(self, energy):
         return 1 / (1 + np.exp(2 * energy * self.beta))
@@ -31,44 +39,28 @@ class Ising:
         return np.random.permutation(self.cells)
 
     def get_energy(self, x, y):
-        return 2 * self.board[(x, y)] * sum(
-            self.board[((x + dx) % self.size, (y + dy) % self.size)] for dx, dy in DIRECTIONS)
+        return 2 * self.board[(x, y)] * sum(self.board[((x + dx) % self.size,
+                                                        (y + dy) % self.size)]
+                                            for dx, dy in DIRECTIONS)
+
+    def get_total_energy(self):
+        return convolve2d(self.board, self.mask, boundary="wrap")
 
     def step(self):
-        changed = False
-        total_energy = 0
         order = self.get_order()
         for x, y in order:
             energy = self.get_energy(x, y)
             p = np.random.rand()
             if energy < 0 or p < self.probability(energy):
                 self.board[(x, y)] *= -1
-                changed = True
-            total_energy -= energy / 2
-        return changed, total_energy
 
     def simulate(self, n_steps):
-        avg_energy = 0
-        avg_squared_energy = 0
-        unchanged = 0
-        fig = plt.figure()
-        for _ in range(n_steps):
-            changed, energy = self.step()
-            avg_energy += energy
-            avg_squared_energy += energy * energy
-
-            if not changed:
-                unchanged += 1
-                if unchanged >= self.max_unchanging:
-                    break
-            else:
-                unchanged = 0
-        capacity = self.beta * self.beta * (avg_squared_energy - avg_energy * avg_energy / n_steps) / n_steps
-        return capacity
-
-    def stabilize(self, n_steps):
         for _ in range(n_steps):
             self.step()
+        return self.get_total_energy()
+
+    def set_beta(self, beta):
+        self.beta = beta
 
     def show_state(self):
         plt.imshow(self.board, vmin=-1, vmax=1)
@@ -84,32 +76,53 @@ class Ising:
         self.im.set_array(self.board.copy())
         return self.im,
 
+    def get_capacities(self, betas, stabilisation_steps, simulation_number):
+        capacities = []
+        for beta in betas:
+            self.set_beta(beta)
+            self.init_board()
+            total_energy = 0
+            squared_energy = 0
+            for _ in range(simulation_number):
+                energy = self.simulate(stabilisation_steps)
+                total_energy += energy
+                squared_energy += energy * energy
+            capacity = beta * beta * (
+                squared_energy -
+                total_energy / stabilisation_steps) / stabilisation_steps
+            capacities.append(capacity)
+            print(capacity)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Ising Simulation")
-    parser.add_argument("--beta", type=float, default=0.4)
     parser.add_argument("--initialisation_mode", type=str, default="random")
     parser.add_argument("--size", type=int, default=8)
     subparsers = parser.add_subparsers(dest="command")
     animate_parser = subparsers.add_parser("animate")
+    animate_parser.add_argument("--beta", type=float, default=0.4)
     simulate_parser = subparsers.add_parser("simulate")
-    simulate_parser.add_argument("--stabilisation_steps", type=int, default=1000, required=False)
-    simulate_parser.add_argument("--simulation_steps", type=int, default=10000, required=False)
-    simulate_parser.add_argument("--max_unchanging", type=int, default=100, required=False)
+    simulate_parser.add_argument("--stabilisation_steps",
+                                 type=int,
+                                 default=20,
+                                 required=False)
+    simulate_parser.add_argument("--simulation_number",
+                                 type=int,
+                                 default=5000,
+                                 required=False)
 
     args = parser.parse_args()
-    if not args.command:
-        raise ValueError("A command should be specified")
+    assert (args.command and args.command in ["simulate", "animate"])
 
-    beta = args.beta
     size = args.size
     initialisation_mode = args.initialisation_mode
-    max_unchanging = args.max_unchanging if "max_unchanging" in args else None
-    ising = Ising(size, beta, max_unchanging)
-    ising.init_board(initialisation_mode)
-
     if args.command == "simulate":
-        ising.stabilize(args.stabilisation_steps)
-        ising.simulate(args.simulation_steps)
+        ising = Ising(size, None, initialisation_mode)
+        capacities = ising.get_capacities(
+            [0.01, 0.02, 0.03, 0.1, 0.2, 0.5, 1, 2], args.stabilisation_steps,
+            args.simulation_number)
+        print(capacities)
     else:
+        beta = args.beta
+        ising = Ising(size, beta, initialisation_mode)
         ising.animate()
