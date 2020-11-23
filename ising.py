@@ -44,7 +44,8 @@ class Ising:
                                             for dx, dy in DIRECTIONS)
 
     def get_total_energy(self):
-        return convolve2d(self.board, self.mask, boundary="wrap")
+        H = convolve2d(self.board, self.mask, mode='same', boundary="wrap")
+        return np.exp(-self.beta * np.sum(H * self.board))
 
     def step(self):
         order = self.get_order()
@@ -81,17 +82,27 @@ class Ising:
         for beta in betas:
             self.set_beta(beta)
             self.init_board()
+
             total_energy = 0
-            squared_energy = 0
+            T1 = 0
+            T2 = 0
+            T3 = 0
+
             for _ in range(simulation_number):
                 energy = self.simulate(stabilisation_steps)
+                Hi = self.get_energy(0, 0)
+                ch = np.cosh(beta * Hi)
+                x = beta * Hi * np.tanh(beta * Hi) - np.log(2 * ch)
+                T1 += Hi * Hi * beta * beta / (ch * ch)
+                T2 += -beta * energy * x
+                T3 += beta * x
                 total_energy += energy
-                squared_energy += energy * energy
-            capacity = beta * beta * (
-                squared_energy -
-                total_energy / stabilisation_steps) / stabilisation_steps
+
+            capacity = (T1 + T2 + T3 * total_energy /
+                        simulation_number) / simulation_number
+            print(f"beta: {beta} , capacity: {capacity}")
             capacities.append(capacity)
-            print(capacity)
+        return capacities
 
 
 if __name__ == "__main__":
@@ -104,11 +115,11 @@ if __name__ == "__main__":
     simulate_parser = subparsers.add_parser("simulate")
     simulate_parser.add_argument("--stabilisation_steps",
                                  type=int,
-                                 default=20,
+                                 default=100,
                                  required=False)
     simulate_parser.add_argument("--simulation_number",
                                  type=int,
-                                 default=5000,
+                                 default=1000,
                                  required=False)
 
     args = parser.parse_args()
@@ -118,10 +129,13 @@ if __name__ == "__main__":
     initialisation_mode = args.initialisation_mode
     if args.command == "simulate":
         ising = Ising(size, None, initialisation_mode)
-        capacities = ising.get_capacities(
-            [0.01, 0.02, 0.03, 0.1, 0.2, 0.5, 1, 2], args.stabilisation_steps,
-            args.simulation_number)
+        betas = [10**i for i in np.linspace(-1, 0.3, 14)]
+        capacities = ising.get_capacities(betas, args.stabilisation_steps,
+                                          args.simulation_number)
         print(capacities)
+        plt.xscale('log')
+        plt.plot(betas, capacities)
+        plt.show()
     else:
         beta = args.beta
         ising = Ising(size, beta, initialisation_mode)
