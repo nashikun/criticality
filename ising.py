@@ -1,15 +1,14 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import argparse
 from scipy.signal import convolve2d
 
 from simulation import Simulation
 
 DIRECTIONS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+MASK = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
 
 class Ising(Simulation):
-    
-    mask = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
-
     def __init__(self, size, beta, initialisation_mode="random"):
         self.cells = [(i, j) for j in range(size) for i in range(size)]
         super().__init__(size, beta, initialisation_mode)
@@ -18,12 +17,15 @@ class Ising(Simulation):
     def get_delta_energy(self, position):
         return 2 * self.board[position] * self.get_Hi(position)
 
+    def get_order(self):
+        return [tuple(x) for x in np.random.permutation(self.cells)]
+
     def get_Hi(self, position):
         x, y = position
         return sum(self.board[((x + dx) % self.size, (y + dy) % self.size)] for dx, dy in DIRECTIONS)
 
     def get_total_energy(self):
-        H = convolve2d(self.board, self.mask, mode='same', boundary="wrap")
+        H = convolve2d(self.board, MASK, mode='same', boundary="wrap")
         return np.exp(-self.beta * np.sum(H * self.board))
 
     def get_capacities(self, betas, stabilisation_steps, simulation_number):
@@ -40,10 +42,10 @@ class Ising(Simulation):
             T3 = 0
             T4 = 0
 
-            for _ in range(simulation_number * stabilisation_steps):
-                # energy = self.simulate(stabilisation_steps)
-                self.step()
-                energy = self.get_total_energy()
+            for _ in range(simulation_number):
+                energy = self.simulate(stabilisation_steps)
+                # self.step()
+                # energy = self.get_total_energy()
                 Hi = self.get_Hi((0, 0))
                 ch = np.cosh(beta * Hi)
                 x = beta * Hi * np.tanh(beta * Hi) - np.log(2 * ch)
@@ -54,11 +56,11 @@ class Ising(Simulation):
                 total_energy += energy
                 cell_energy += Hi * self.board[(0, 0)]
                 
-            capacity = (T1 + T2 * total_energy /stabilisation_steps / simulation_number + T3) / simulation_number / stabilisation_steps
-            local_capacity = (T1 + T2 * cell_energy / simulation_number / stabilisation_steps + T4) / simulation_number / stabilisation_steps
+            capacity = (T1 + T2 * total_energy / simulation_number + T3) / simulation_number 
+            local_capacity = (T1 - T2 * cell_energy / simulation_number - T4) / simulation_number 
             print(f"beta: {beta} , capacity: {capacity}, local_capacity: {local_capacity}")
             capacities.append(capacity)
-            local_capacities.append(local_capacity)
+            local_capacities.append(T1 / simulation_number )
             
         return capacities, local_capacities
 
@@ -86,7 +88,7 @@ if __name__ == "__main__":
     initialisation_mode = args.initialisation_mode
     if args.command == "simulate":
         ising = Ising(size, None, initialisation_mode)
-        betas = [10**i for i in np.linspace(-1.5, 0.5, 81)]
+        betas = [10**i for i in np.linspace(-1.5, 0.5, 21)]
         capacities, local_capacities = ising.get_capacities(betas, args.stabilisation_steps,
                                           args.simulation_number)
         print(capacities)
@@ -98,3 +100,4 @@ if __name__ == "__main__":
         beta = args.beta
         ising = Ising(size, beta, initialisation_mode)
         ising.animate()
+

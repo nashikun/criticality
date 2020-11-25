@@ -5,31 +5,33 @@ from simulation import Simulation
 
 
 class Boltzman(Simulation):
-    def __init__(self, size, beta, initialisation_mode):
-        self.cells = [i for i in range(size)]
-        super().__init__(size, beta, initialisation_mode)
-        self.init_board((size, 1))
-        weight = np.random.random((size, 1))
+    def __init__(self, input_size, hidden_size, beta, initialisation_mode):
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.cells = [i for i in range(input_size + hidden_size)]
+        super().__init__(input_size + hidden_size, beta, initialisation_mode)
+        self.init_board((input_size + hidden_size, 1))
+        weight = np.random.random((input_size + hidden_size, 1))
         self.weights = weight + weight.T
 
     def get_Hi(self, position):
         return self.weights[position] @ self.board
 
     def get_order(self):
-        return np.random.permutation(self.cells)
+        return np.random.permutation(self.cells[self.input_size:])
 
     def get_total_energy(self):
-        return 0
+        return np.exp(-self.beta * self.board.T @ self.weights @ self.board)
 
     def get_delta_energy(self, position):
-        print(self.board[position], self.get_Hi(position))
         return 2 * self.board[position] * self.get_Hi(position)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("Boltzman Simulation")
     parser.add_argument("--initialisation_mode", type=str, default="random")
-    parser.add_argument("--size", type=int, default=8)
+    parser.add_argument("--input_size", type=int, default=3)
+    parser.add_argument("--hidden_size", type=int, default=5)
     subparsers = parser.add_subparsers(dest="command")
     animate_parser = subparsers.add_parser("animate")
     animate_parser.add_argument("--beta", type=float, default=0.4)
@@ -46,10 +48,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     assert (args.command and args.command in ["simulate", "animate"])
 
-    size = args.size
+    input_size = args.input_size
+    hidden_size = args.hidden_size
     initialisation_mode = args.initialisation_mode
     if args.command == "simulate":
-        boltzman = Boltzman(size, None, initialisation_mode)
+        boltzman = Boltzman(input_size, hidden_size, None, initialisation_mode)
         betas = [10**i for i in np.linspace(-1.5, 0.5, 81)]
         plt.xscale('log')
         plt.plot(betas, capacities)
@@ -57,5 +60,5 @@ if __name__ == "__main__":
         plt.show()
     else:
         beta = args.beta
-        ising = Boltzman(size, beta, initialisation_mode)
+        ising = Boltzman(input_size, hidden_size, beta, initialisation_mode)
         ising.animate()
