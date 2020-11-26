@@ -60,7 +60,7 @@ class Ising(Simulation):
             local_capacity = (T1 - T2 * cell_energy / simulation_number - T4) / simulation_number 
             print(f"beta: {beta} , capacity: {capacity}, local_capacity: {local_capacity}")
             capacities.append(capacity)
-            local_capacities.append(T1 / simulation_number )
+            local_capacities.append(local_capacity)
             
         return capacities, local_capacities
 
@@ -72,6 +72,10 @@ if __name__ == "__main__":
     animate_parser = subparsers.add_parser("animate")
     animate_parser.add_argument("--beta", type=float, default=0.4)
     simulate_parser = subparsers.add_parser("simulate")
+    simulate_parser.add_argument("--output",
+                                 type=str,
+                                 default="",
+                                 required=False)
     simulate_parser.add_argument("--stabilisation_steps",
                                  type=int,
                                  default=100,
@@ -88,7 +92,7 @@ if __name__ == "__main__":
     initialisation_mode = args.initialisation_mode
     if args.command == "simulate":
         ising = Ising(size, None, initialisation_mode)
-        betas = [10**i for i in np.linspace(-1.5, 0.5, 21)]
+        betas = [10**i for i in np.linspace(-1.5, 0.5, 81)]
         capacities, local_capacities = ising.get_capacities(betas, args.stabilisation_steps,
                                           args.simulation_number)
         print(capacities)
@@ -96,6 +100,11 @@ if __name__ == "__main__":
         plt.plot(betas, capacities)
         plt.plot(betas, local_capacities)
         plt.show()
+        if args.output:
+            with open(args.output, 'wb') as f:
+                np.save(f, np.array(betas))
+                np.save(f, np.array(capacities))
+                np.save(f, np.array(local_capacities))
     else:
         beta = args.beta
         ising = Ising(size, beta, initialisation_mode)
